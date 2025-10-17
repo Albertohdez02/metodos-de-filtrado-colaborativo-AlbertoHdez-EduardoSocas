@@ -1,16 +1,22 @@
-export default function NeighbourSelector() {
+import React from "react";
+
+interface NeighborsSelectorProps {
+  onChange: (k: number) => void;
+}
+
+const NeighborsSelector: React.FC<NeighborsSelectorProps> = ({ onChange }) => {
   return (
-    <div className="bg-white p-4 rounded-xl shadow-md">
-      <label htmlFor="neighbours" className="block text-sm font-semibold mb-2">
-        Número de vecinos
-      </label>
+    <div className="bg-white text-gray-800 p-4 rounded-xl shadow">
+      <label className="block font-semibold mb-2">Número de vecinos:</label>
       <input
-        id="neighbours"
         type="number"
         min="1"
         placeholder="Introduce un número"
-        className="w-32 border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+        onChange={(e) => onChange(Number(e.target.value))}
+        className="w-full border rounded p-2"
       />
     </div>
   );
-}
+};
+
+export default NeighborsSelector;
