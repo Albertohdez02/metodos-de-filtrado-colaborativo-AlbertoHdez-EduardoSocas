@@ -21,17 +21,9 @@ Asignatura: *Gestión de Conocimiento de las Organizaciones*
 
 ## ⚙️ Requisitos previos
 
-Asegúrate de tener instalado en tu sistema:
-
 - 🟩 Node.js ≥ 18
-- 📦 npm ≥ 9 (instalado junto con Node)
-- 💻 Git (opcional para clonar el repo)
+- 📦 npm ≥ 9
 
-Verifica tu versión con:
-```
-  node -v
-  npm -v
-```
 -----------------------------------------------------------------------------
 
 ## 🚀 Instalación
@@ -59,17 +51,17 @@ La aplicación tiene **dos partes**:
 un **frontend React** (Vite) y un **backend Express** (TypeScript).
 
 1️⃣ Levantar el backend:
-
+```
   npm run server
 
   ✅ Backend corriendo en http:localhost:3000
-
-2️⃣ Levantar el frontend:
-
+```
+2️⃣ Levantar el frontend en otra terminal:
+```
   npm run dev
 
   ➜ Local: http:localhost:5173/
-
+```
 Abre ese enlace en tu navegador.
 
 -----------------------------------------------------------------------------
