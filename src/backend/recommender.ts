@@ -127,52 +127,120 @@ function cosine(userA: (number | null)[], userB: (number | null)[]): number {
     const va = userA[i] as number, vb = userB[i] as number;
     numerator += va * vb; denomA += va * va; denomB += vb * vb;
   }
-  const denom = Math.sqrt(denomA) * Math.sqrt(denomB);
-  return denom === 0 ? 0 : numerator / denom; // [-1,1] (normalmente [0,1])
+  const denominator = Math.sqrt(denomA) * Math.sqrt(denomB);
+  return denominator === 0 ? 0 : numerator / denominator; // [-1,1] (normalmente [0,1])
 }
 
-function euclideanSimilarity(a: (number | null)[], b: (number | null)[]): number {
-  const idx = commonRatedIndices(a, b);
-  if (idx.length === 0) return 0;
-  let sumsq = 0;
-  for (const i of idx) {
-    const d = (a[i] as number) - (b[i] as number);
-    sumsq += d * d;
+/**
+ * Calcula la similitud entre dos usuarios usando la distancia euclídea inversa.
+ * 
+ * Cuanto menor sea la distancia euclídea entre las valoraciones,
+ * mayor será la similitud resultante.
+ * 
+ * @param userA - Valoraciones del primer usuario
+ * @param userB - Valoraciones del segundo usuario
+ * @returns Similitud en el rango (0, 1), donde 1 indica igualdad perfecta
+ */
+
+function euclideanSimilarity(userA: (number | null)[], userB: (number | null)[]): number {
+  const commonIndex = commonRatedIndices(userA, userB);
+  if (commonIndex.length === 0) return 0;
+  let sumOfSquares = 0;
+  // calcular la suma de las diferencias al cuadrado
+  for (const i of commonIndex) {
+    const diff = (userA[i] as number) - (userB[i] as number);
+    sumOfSquares += diff * diff;
   }
-  const dist = Math.sqrt(sumsq);
-  return 1 / (1 + dist); // (0,1]
+  const dist = Math.sqrt(sumOfSquares);
+
+  // convertir distancia en una similitud (mas distancia == menos similitud)
+  return 1 / (1 + dist); // rango (0,1]
 }
 
 // funciones de calculo
 
-export function computeSimilarities(matrix: UtilityMatrix, metric: Metric, k?: number): {
-  simMatrix: number[][],
-  neighbors: Neighbor[][]
-} {
-  const n = matrix.length;
-  const simMatrix: number[][] = Array.from({ length: n }, () => Array(n).fill(0));
-  const metricFn = metric === "pearson" ? pearson : metric === "cosine" ? cosine : euclideanSimilarity;
+/**
+ * Calcula la matriz de similitud entre todos los usuarios
+ * según la métrica elegida (Pearson, Cosine o Euclidean).
+ *
+ * También determina los vecinos más similares de cada usuario,
+ * opcionalmente limitando el número de vecinos a `k`.
+ *
+ * @param ratingsMatrix - Matriz de utilidad (usuarios x ítems)
+ * @param metric - Tipo de métrica de similitud a usar
+ * @param k - Número opcional de vecinos más cercanos a conservar
+ * @returns Un objeto con:
+ *  - simMatrix: matriz NxN con los valores de similitud
+ *  - neighbors: lista de vecinos ordenados por similitud para cada usuario
+ */
+export function computeSimilarities(
+  ratingsMatrix: UtilityMatrix,
+  metric: Metric,
+  k?: number
+): { simMatrix: number[][]; neighbors: Neighbor[][] } {
+  const numUsers = ratingsMatrix.length;
+  const simMatrix: number[][] = Array.from({ length: numUsers }, () => Array(numUsers).fill(0));
 
-  for (let i = 0; i < n; i++) {
-    for (let j = i + 1; j < n; j++) {
-      const s = metricFn(matrix[i], matrix[j]);
-      simMatrix[i][j] = s; simMatrix[j][i] = s;
+  // Seleccionar la función de similitud correspondiente
+  const similarityFn =
+    metric === "pearson" ? pearson :
+    metric === "cosine" ? cosine :
+    euclideanSimilarity;
+
+  // Calcular la similitud entre cada par de usuarios (matriz simétrica)
+  for (let userA = 0; userA < numUsers; userA++) {
+    for (let userB = userA + 1; userB < numUsers; userB++) {
+      const similarity = similarityFn(ratingsMatrix[userA], ratingsMatrix[userB]);
+      simMatrix[userA][userB] = similarity;
+      simMatrix[userB][userA] = similarity; // simétrica
     }
   }
 
-  const neighbors: Neighbor[][] = Array.from({ length: n }, () => []);
-  for (let i = 0; i < n; i++) {
-    const row: Neighbor[] = [];
-    for (let j = 0; j < n; j++) if (i !== j) row.push({ neighborIndex: j, similarity: simMatrix[i][j] });
-    row.sort((a, b) => b.similarity - a.similarity);
-    neighbors[i] = typeof k === "number" ? row.slice(0, k) : row;
+  // Calcular y ordenar los vecinos más similares para cada usuario
+  const neighbors: Neighbor[][] = Array.from({ length: numUsers }, () => []);
+
+  for (let user = 0; user < numUsers; user++) {
+    const neighborList: Neighbor[] = [];
+
+    for (let otherUser = 0; otherUser < numUsers; otherUser++) {
+      if (user !== otherUser) {
+        neighborList.push({
+          neighborIndex: otherUser,
+          similarity: simMatrix[user][otherUser],
+        });
+      }
+    }
+
+    // Ordenar vecinos por similitud descendente
+    neighborList.sort((a, b) => b.similarity - a.similarity);
+
+    // Si se especifica k, quedarse con los k vecinos más similares
+    neighbors[user] = typeof k === "number" ? neighborList.slice(0, k) : neighborList;
   }
 
   return { simMatrix, neighbors };
 }
 
+
+/**
+ * Predice la valoración que un usuario daría a un ítem no valorado,
+ * utilizando información de sus vecinos más similares.
+ *
+ * Puede usar dos estrategias:
+ *  - "simple": promedio ponderado por similitud
+ *  - "mean-diff": compensando por la media de cada usuario (más preciso)
+ *
+ * @param ratingsMatrix - Matriz de utilidad original
+ * @param userIndex - Índice del usuario para quien se predice
+ * @param itemIndex - Índice del ítem a predecir
+ * @param kNeighbors - Lista de vecinos más similares del usuario
+ * @param predictionType - Estrategia de predicción ("simple" o "mean-diff")
+ * @param minRating - Valor mínimo permitido (opcional)
+ * @param maxRating - Valor máximo permitido (opcional)
+ * @returns Detalle completo de la predicción realizada
+ */
 export function predictForCell(
-  matrix: UtilityMatrix,
+  ratingsMatrix: UtilityMatrix,
   userIndex: number,
   itemIndex: number,
   kNeighbors: Neighbor[],
@@ -180,82 +248,151 @@ export function predictForCell(
   minRating?: number,
   maxRating?: number
 ): PredictionDetail {
-  const neighborsUsed: { neighborIndex: number; similarity: number; rating: number; neighborMean?: number }[] = [];
-  for (const n of kNeighbors) {
-    const r = matrix[n.neighborIndex][itemIndex];
-    if (r !== null) neighborsUsed.push({ neighborIndex: n.neighborIndex, similarity: n.similarity, rating: r });
-  }
+  const neighborsUsed: {
+    neighborIndex: number;
+    similarity: number;
+    rating: number;
+    neighborMean?: number;
+  }[] = [];
 
-  const userMean = meanOf(matrix[userIndex]);
-  let raw = userMean; // fallback si no hay vecinos con rating
-  if (neighborsUsed.length > 0) {
-    if (predictionType === "simple") {
-      let num = 0, den = 0;
-      for (const nu of neighborsUsed) { num += nu.similarity * nu.rating; den += Math.abs(nu.similarity); }
-      raw = den === 0 ? userMean : num / den;
-    } else {
-      let num = 0, den = 0;
-      for (const nu of neighborsUsed) {
-        const neighMean = meanOf(matrix[nu.neighborIndex]);
-        nu.neighborMean = neighMean;
-        num += nu.similarity * (nu.rating - neighMean);
-        den += Math.abs(nu.similarity);
-      }
-      raw = den === 0 ? userMean : userMean + num / den;
+  // Solo se usan vecinos que hayan valorado este ítem
+  for (const neighbor of kNeighbors) {
+    const neighborRating = ratingsMatrix[neighbor.neighborIndex][itemIndex];
+    if (neighborRating !== null) {
+      neighborsUsed.push({
+        neighborIndex: neighbor.neighborIndex,
+        similarity: neighbor.similarity,
+        rating: neighborRating,
+      });
     }
   }
 
-  let final = raw;
-  if (typeof minRating === "number") final = Math.max(final, minRating);
-  if (typeof maxRating === "number") final = Math.min(final, maxRating);
+  const userMean = meanOf(ratingsMatrix[userIndex]);
+  let rawPrediction = userMean; // Valor por defecto si no hay vecinos válidos
+
+  if (neighborsUsed.length > 0) {
+    if (predictionType === "simple") {
+      // --- Predicción simple: promedio ponderado por similitud ---
+      let weightedSum = 0;
+      let similaritySum = 0;
+
+      for (const neighbor of neighborsUsed) {
+        weightedSum += neighbor.similarity * neighbor.rating;
+        similaritySum += Math.abs(neighbor.similarity);
+      }
+
+      rawPrediction = similaritySum === 0 ? userMean : weightedSum / similaritySum;
+    } else {
+      // --- Predicción con corrección de media (mean-diff) ---
+      let weightedDiffSum = 0;
+      let similaritySum = 0;
+
+      for (const neighbor of neighborsUsed) {
+        const neighborMean = meanOf(ratingsMatrix[neighbor.neighborIndex]);
+        neighbor.neighborMean = neighborMean;
+        weightedDiffSum += neighbor.similarity * (neighbor.rating - neighborMean);
+        similaritySum += Math.abs(neighbor.similarity);
+      }
+
+      rawPrediction = similaritySum === 0 ? userMean : userMean + weightedDiffSum / similaritySum;
+    }
+  }
+
+  // Aplicar límites opcionales
+  let finalPrediction = rawPrediction;
+  if (typeof minRating === "number") finalPrediction = Math.max(finalPrediction, minRating);
+  if (typeof maxRating === "number") finalPrediction = Math.min(finalPrediction, maxRating);
 
   return {
     user: userIndex,
     item: itemIndex,
     neighborsUsed,
-    rawPrediction: raw,
-    finalPrediction: final,
-    formula: predictionType
+    rawPrediction,
+    finalPrediction,
+    formula: predictionType,
   };
 }
 
+
+/**
+ * Calcula todas las predicciones posibles sobre la matriz de utilidad,
+ * completando los valores faltantes y generando recomendaciones para cada usuario.
+ *
+ * @param ratingsMatrix - Matriz original (usuarios x ítems)
+ * @param metric - Métrica de similitud a utilizar
+ * @param kNeighbors - Número de vecinos más similares a usar por usuario
+ * @param predictionType - Tipo de fórmula de predicción ("simple" o "mean-diff")
+ * @param minRating - Valor mínimo permitido para las predicciones (opcional)
+ * @param maxRating - Valor máximo permitido para las predicciones (opcional)
+ * @returns Un objeto con toda la información del proceso:
+ *  - completedMatrix: matriz con valores predichos
+ *  - simMatrix: matriz de similitudes
+ *  - neighbors: vecinos usados
+ *  - predictions: detalles de cada predicción individual
+ *  - recommendations: ítems recomendados por usuario, ordenados por puntuación
+ */
 export function predictMatrix(
-  matrix: UtilityMatrix,
+  ratingsMatrix: UtilityMatrix,
   metric: Metric,
   kNeighbors: number,
   predictionType: PredictionType,
   minRating?: number,
   maxRating?: number
 ): RecommenderResult {
-  const nUsers = matrix.length;
-  const nItems = matrix[0]?.length ?? 0;
+  const numUsers = ratingsMatrix.length;
+  const numItems = ratingsMatrix[0]?.length ?? 0;
 
-  const { simMatrix, neighbors } = computeSimilarities(matrix, metric, kNeighbors);
+  // Calcular similitudes entre todos los usuarios
+  const { simMatrix, neighbors } = computeSimilarities(ratingsMatrix, metric, kNeighbors);
 
-  const completedMatrix: number[][] = Array.from({ length: nUsers }, (_, u) =>
-    Array.from({ length: nItems }, (_, it) => (matrix[u][it] === null ? NaN : (matrix[u][it] as number)))
+  // Crear una copia de la matriz original para ir completando
+  const completedMatrix: number[][] = Array.from({ length: numUsers }, (_, userIndex) =>
+    Array.from({ length: numItems }, (_, itemIndex) =>
+      ratingsMatrix[userIndex][itemIndex] === null
+        ? NaN
+        : (ratingsMatrix[userIndex][itemIndex] as number)
+    )
   );
 
   const predictions: PredictionDetail[] = [];
-  for (let u = 0; u < nUsers; u++) {
-    for (let it = 0; it < nItems; it++) {
-      if (matrix[u][it] === null) {
-        const detail = predictForCell(matrix, u, it, neighbors[u], predictionType, minRating, maxRating);
-        predictions.push(detail);
-        completedMatrix[u][it] = detail.finalPrediction;
+
+  // Recorrer toda la matriz para generar las predicciones faltantes
+  for (let userIndex = 0; userIndex < numUsers; userIndex++) {
+    for (let itemIndex = 0; itemIndex < numItems; itemIndex++) {
+      if (ratingsMatrix[userIndex][itemIndex] === null) {
+        const predictionDetail = predictForCell(
+          ratingsMatrix,
+          userIndex,
+          itemIndex,
+          neighbors[userIndex],
+          predictionType,
+          minRating,
+          maxRating
+        );
+
+        predictions.push(predictionDetail);
+        completedMatrix[userIndex][itemIndex] = predictionDetail.finalPrediction;
       }
     }
   }
 
-  const recommendations: { user: number; recommendations: { item: number; predicted: number }[] }[] = [];
-  for (let u = 0; u < nUsers; u++) {
-    const recs: { item: number; predicted: number }[] = [];
-    for (let it = 0; it < nItems; it++) {
-      if (matrix[u][it] === null) recs.push({ item: it, predicted: completedMatrix[u][it] });
+  // Generar lista de recomendaciones por usuario (ordenadas descendentemente)
+  const recommendations = ratingsMatrix.map((_, userIndex) => {
+    const userRecs: { item: number; predicted: number }[] = [];
+
+    for (let itemIndex = 0; itemIndex < numItems; itemIndex++) {
+      if (ratingsMatrix[userIndex][itemIndex] === null) {
+        userRecs.push({
+          item: itemIndex,
+          predicted: completedMatrix[userIndex][itemIndex],
+        });
+      }
     }
-    recs.sort((a, b) => b.predicted - a.predicted);
-    recommendations.push({ user: u, recommendations: recs });
-  }
+
+    userRecs.sort((a, b) => b.predicted - a.predicted);
+    return { user: userIndex, recommendations: userRecs };
+  });
 
   return { completedMatrix, simMatrix, neighbors, predictions, recommendations };
 }
+
