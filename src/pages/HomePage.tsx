@@ -91,7 +91,6 @@ export default function HomePage() {
 
       <h2 className="text-2xl font-bold mt-10 mb-4">Resultados de la predicción</h2>
       <ResultsTable data={result} />
-      <p className="text-gray-400 mt-4 text-sm">Aquí se mostrará la matriz de utilidad con las predicciones calculadas.</p>
 
       {/* verificación de requisitos */}
       {result && (

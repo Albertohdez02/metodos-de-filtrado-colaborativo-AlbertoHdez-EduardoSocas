@@ -26,49 +26,109 @@ export interface RecommenderResult {
 
 // funciones auxiliares
 
-function meanOf(row: (number | null)[]): number {
-  let s = 0, c = 0;
-  for (const v of row) if (v !== null) { s += v; c++; }
-  return c === 0 ? 0 : s / c;
+/**
+ * Calcula la media (promedio) de las valoraciones de un usuario.
+ * Ignora los valores `null` (ítems no valorados).
+ *
+ * @param ratings - Array de valoraciones de un usuario (número o null)
+ * @returns La media de las valoraciones existentes, o 0 si no hay ninguna
+ */
+
+function meanOf(ratings: (number | null)[]): number {
+  let sum = 0;    // Suma acumulada de las valoraciones válidas
+  let count = 0;  //Número de valoraciones válidas
+  for (const value of ratings) {
+    if (value !== null) { 
+      sum += value; 
+      count++; 
+    }
+  }
+  //Evitar división por cero si no hay valoraciones
+  return count === 0 ? 0 : sum / count;
 }
 
-function commonRatedIndices(a: (number | null)[], b: (number | null)[]): number[] {
-  const idx: number[] = [];
-  for (let i = 0; i < a.length; i++) if (a[i] !== null && b[i] !== null) idx.push(i);
-  return idx;
+/**
+ * Devuelve los índices de los ítems que han sido valorados
+ * tanto por el usuario A como por el usuario B.
+ *
+ * @param userA - Valoraciones del primer usuario
+ * @param userB - Valoraciones del segundo usuario
+ * @returns Array con los índices de los ítems en común
+ */
+
+function commonRatedIndices(userA: (number | null)[], userB: (number | null)[]): number[] {
+  const commonIndex: number[] = [];
+  for (let i = 0; i < userA.length; i++) {
+    if (userA[i] !== null && userB[i] !== null) {
+       commonIndex.push(i); // Ambos usuarios valoraron este ítem
+    }
+  }
+  return commonIndex;
 }
 
 // funciones de similar¡dad 
 
-function pearson(a: (number | null)[], b: (number | null)[]): number {
-  const idx = commonRatedIndices(a, b);
-  const n = idx.length;
-  if (n === 0) return 0;
+/**
+ * Calcula la similitud entre dos usuarios usando la correlación de Pearson.
+ * 
+ * La correlación de Pearson mide la relación lineal entre los patrones de valoración
+ * de dos usuarios, normalizando las diferencias de escala y tendencia.
+ * 
+ * @param userA - Valoraciones del primer usuario
+ * @param userB - Valoraciones del segundo usuario
+ * @returns Valor de similitud en el rango [-1, 1]
+ */
+
+function pearson(userA: (number | null)[], userB: (number | null)[]): number {
+  const commonIndex = commonRatedIndices(userA, userB);
+  const numberOfCommonIndexes = commonIndex.length;
+  //si no hay ítems en común, la similitud es 0
+  if (numberOfCommonIndexes === 0) return 0;
+
+  // calcular medias de las valoraciones en común
   let sumA = 0, sumB = 0;
-  for (const i of idx) { sumA += a[i] as number; sumB += b[i] as number; }
-  const meanA = sumA / n, meanB = sumB / n;
-  let num = 0, denA = 0, denB = 0;
-  for (const i of idx) {
-    const da = (a[i] as number) - meanA;
-    const db = (b[i] as number) - meanB;
-    num += da * db;
-    denA += da * da;
-    denB += db * db;
+  for (const i of commonIndex) { 
+    sumA += userA[i] as number;
+    sumB += userB[i] as number; 
   }
-  const denom = Math.sqrt(denA) * Math.sqrt(denB);
-  return denom === 0 ? 0 : num / denom; // [-1,1]
+  const meanA = sumA / numberOfCommonIndexes;
+  const meanB = sumB / numberOfCommonIndexes;
+
+  // calcular numerador y denominadores
+  let numerator = 0, denomA = 0, denomB = 0;
+  for (const i of commonIndex) {
+    const diffUserA = (userA[i] as number) - meanA;
+    const diffUserB = (userB[i] as number) - meanB;
+    numerator += diffUserA * diffUserB;
+    denomA += diffUserA * diffUserA;
+    denomB += diffUserB * diffUserB;
+  }
+  const denomitnator = Math.sqrt(denomA) * Math.sqrt(denomB);
+  // evitar división por cero
+  return denomitnator === 0 ? 0 : numerator / denomitnator; // [-1,1]
 }
 
-function cosine(a: (number | null)[], b: (number | null)[]): number {
-  const idx = commonRatedIndices(a, b);
-  if (idx.length === 0) return 0;
-  let dot = 0, na = 0, nb = 0;
-  for (const i of idx) {
-    const va = a[i] as number, vb = b[i] as number;
-    dot += va * vb; na += va * va; nb += vb * vb;
+/**
+ * Calcula la similitud del coseno entre dos usuarios.
+ * 
+ * Mide el ángulo entre los vectores de valoraciones de ambos usuarios.
+ * Valores cercanos a 1 indican vectores con dirección similar.
+ * 
+ * @param userA - Valoraciones del primer usuario
+ * @param userB - Valoraciones del segundo usuario
+ * @returns Valor de similitud en el rango [-1, 1] (normalmente entre [0, 1])
+ */
+
+function cosine(userA: (number | null)[], userB: (number | null)[]): number {
+  const commonIndex = commonRatedIndices(userA, userB);
+  if (commonIndex.length === 0) return 0;
+  let numerator = 0, denomA = 0, denomB = 0;
+  for (const i of commonIndex) {
+    const va = userA[i] as number, vb = userB[i] as number;
+    numerator += va * vb; denomA += va * va; denomB += vb * vb;
   }
-  const denom = Math.sqrt(na) * Math.sqrt(nb);
-  return denom === 0 ? 0 : dot / denom; // [-1,1] (normalmente [0,1])
+  const denom = Math.sqrt(denomA) * Math.sqrt(denomB);
+  return denom === 0 ? 0 : numerator / denom; // [-1,1] (normalmente [0,1])
 }
 
 function euclideanSimilarity(a: (number | null)[], b: (number | null)[]): number {
