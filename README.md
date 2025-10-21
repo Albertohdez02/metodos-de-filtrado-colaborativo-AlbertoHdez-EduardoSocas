@@ -139,14 +139,10 @@ Abre ese enlace en tu navegador.
 2. Inicia backend y frontend como se indica arriba.
 3. Sube el fichero desde la app → el sistema calculará y mostrará las predicciones.
 
-
 -----------------------------------------------------------------------------
 
 ## 📄 Informe de la práctica
 
 Para esta práctica se ha realizado un informe en el que se plasma la ejecución de la aplicación con varios
 parámetros distintos, en varios ficheros de pruebas distintos de matrices de tamaño variable. Este informe
-se encuentra en este mismo repositorio en la ruta: 
-```
-/informe-sistemas_recomendacion-app_web-AlbertoHdez-EduardoSocasPE101.pdf
-```
+se encuentra en este mismo repositorio. Aquí el [enlace]([https://github.com/ull-cs/gestion-conocimiento/tree/main/recommeder-systems/examples-utility-matrices](https://github.com/Albertohdez02/metodos-de-filtrado-colaborativo-AlbertoHdez-EduardoSocas/blob/main/informe-sistemas_recomendacion-app_web-AlbertoHdez-EduardoSocasPE101.pdf))
